@@ -5,14 +5,16 @@ library(bioseq)
 library(Biostrings)
 library(ape)
 library(sangerseqR)
+library(ggtree)
+library(reshape2)
+library(readxl)
 
 
 
 read_fasta_df <- function (file = "") {
   fasta <- readLines(file)
   ind <- grep(">", fasta)
-  s <- data.frame(ind = ind, from = ind + 1, to = c((ind - 
-                                                       1)[-1], length(fasta)))
+  s <- data.frame(ind = ind, from = ind + 1, to = c((ind - 1)[-1], length(fasta)))
   seqs <- rep(NA, length(ind))
   for (i in 1:length(ind)) {
     seqs[i] <- paste(fasta[s$from[i]:s$to[i]], collapse = "")
@@ -192,6 +194,13 @@ aligned_plotting <- aligned_df %>%
 key <- aligned_plotting %>%
   tibble::rownames_to_column(var = "id")
 
+proliferum_rows <- which(key$sample_id == "_proliferum")
+madreporum_rows <- which(key$sample_id == "_madreporum")
+temp_proliferum <- key[proliferum_rows, ]
+temp_madreporum <- key[madreporum_rows, ]
+key[proliferum_rows, ] <- temp_madreporum
+key[madreporum_rows, ] <- temp_proliferum
+
 
 # Create long dataframe for ggplot
 long_sequences <- str_split(aligned_plotting$sequence, "") %>%
@@ -201,6 +210,10 @@ long_sequences <- str_split(aligned_plotting$sequence, "") %>%
          L1 = as.character(L1)) %>%
   left_join(., key, by = c("L1" = "id")) %>%
   ungroup()
+
+long_sequences <- long_sequences %>%
+  mutate(sample_id = factor(sample_id, levels = unique(key$sample_id)))
+
 
 # Plot alignment
 p1 <- ggplot(long_sequences, aes(y = sample_id, x = x)) +
@@ -232,12 +245,20 @@ filtered_df <- fasta_files_prex %>%
   purrr::reduce(rbind) # reduce with rbind into one dataframe
 
 final_sequences <- filtered_df %>%
-  mutate(sequence = case_when(str_detect(label, "Cox1") ~ str_sub(sequence, start = 20, end = 900),
-                              str_detect(label, "LSU") ~ str_sub(sequence, start = 70, end = 500),
-                              str_detect(label, "cp23s") ~ str_sub(sequence, start = 50, end = 500),
-                              str_detect(label, "Cob") ~ str_sub(sequence, start = 20, end = 850),
-                              str_detect(label, "psbA") ~ str_sub(sequence, start = 1001, end = 1050),
+  mutate(sequence = case_when(str_detect(label, "Cox1") ~ str_sub(sequence, start = 10, end = 955),
+                              str_detect(label, "LSU") ~ str_sub(sequence, start = 5, end = 607),
+                              str_detect(label, "cp23s") ~ str_sub(sequence, start = 33, end = 580),
+                              str_detect(label, "Cob") ~ str_sub(sequence, start = 7, end = 919),
+                              str_detect(label, "psbA") ~ str_sub(sequence, start = 976, end = 1056),
                               TRUE ~ str_sub(sequence, start = 10, end = 900)))
+
+# final_sequences <- filtered_df %>%
+#   mutate(sequence = case_when(str_detect(label, "Cox1") ~ str_sub(sequence, start = 10, end = 945),
+#                               str_detect(label, "LSU") ~ str_sub(sequence, start = 5, end = 607),
+#                               str_detect(label, "cp23s") ~ str_sub(sequence, start = 33, end = 580),
+#                               str_detect(label, "Cob") ~ str_sub(sequence, start = 14, end = 912),
+#                               str_detect(label, "psbA") ~ str_sub(sequence, start = 976, end = 1056),
+#                               TRUE ~ str_sub(sequence, start = 10, end = 900)))
 
 aligned_plotting <- final_sequences %>%
   mutate(sample_id = str_replace(label, "(Cob|Cox1|cp23s|LSU|psbA)", ""),
@@ -248,6 +269,14 @@ aligned_plotting <- final_sequences %>%
 key <- aligned_plotting %>%
   tibble::rownames_to_column(var = "id")
 
+proliferum_rows <- which(key$sample_id == "_proliferum")
+madreporum_rows <- which(key$sample_id == "_madreporum")
+temp_proliferum <- key[proliferum_rows, ]
+temp_madreporum <- key[madreporum_rows, ]
+key[proliferum_rows, ] <- temp_madreporum
+key[madreporum_rows, ] <- temp_proliferum
+
+
 
 # Create long dataframe for ggplot
 long_sequences <- str_split(aligned_plotting$sequence, "") %>%
@@ -257,6 +286,9 @@ long_sequences <- str_split(aligned_plotting$sequence, "") %>%
          L1 = as.character(L1)) %>%
   left_join(., key, by = c("L1" = "id")) %>%
   ungroup()
+
+long_sequences <- long_sequences %>%
+  mutate(sample_id = factor(sample_id, levels = unique(key$sample_id)))
 
 # Plot alignment
 p1 <- ggplot(long_sequences, aes(y = sample_id, x = x)) +
@@ -277,9 +309,8 @@ p1
 
 ggsave("marker_alignment_all_Cladocopium_trimmed.pdf", plot = p1, device="pdf", width = 10, height = 4)
 
-trimmed_fasta_filenames <- c("trimmed_Cox1.fasta", "trimmed_LSU.fasta", "trimmed_cp23s.fasta", "trimmed_Cob.fasta")
+trimmed_fasta_filenames <- c("trimmed_Cox1.fasta", "trimmed_LSU.fasta", "trimmed_cp23s.fasta", "trimmed_Cob.fasta","trimmed_psbA.fasta")
 
-# Write trimmed sequences to respective trimmed FASTA files
 for (i in seq_along(trimmed_fasta_filenames)) {
   # Filter dataframe for sequences with corresponding labels
   trimmed_sequences <- final_sequences[grepl(gsub("trimmed_", "", gsub(".fasta", "", trimmed_fasta_filenames[i])), final_sequences$label), ]
@@ -287,8 +318,31 @@ for (i in seq_along(trimmed_fasta_filenames)) {
   write_fasta(trimmed_sequences$sequence, trimmed_sequences$label, trimmed_fasta_filenames[i])
 }
 
-fasta_files_prex2 <- c("trimmed_Cox1.fasta", "trimmed_LSU.fasta", "trimmed_cp23s.fasta", "trimmed_Cob.fasta") #, "aligned_sequences_psbA.fasta")
-fasta_files_2 <- lapply(fasta_files_prex2, readDNAStringSet)
+
+compute_sequence_lengths <- function(fasta_file) {
+  # Read the FASTA file
+  fasta_sequences <- readDNAStringSet(fasta_file, format="fasta")
+  
+  # Compute lengths of sequences
+  sequence_lengths <- width(fasta_sequences)
+  
+  # Return a named vector of sequence lengths
+  return(sequence_lengths)
+}
+
+# Apply the function to each file and store the results in a list
+sequence_lengths_list <- lapply(trimmed_fasta_filenames, compute_sequence_lengths)
+
+# Display sequence lengths for each file
+names(sequence_lengths_list) <- trimmed_fasta_filenames
+sequence_lengths_list
+
+
+# Write trimmed sequences to respective trimmed FASTA files
+
+
+#fasta_files_prex2 <- c("trimmed_Cox1.fasta", "trimmed_LSU.fasta", "trimmed_cp23s.fasta", "trimmed_Cob.fasta") #, "aligned_sequences_psbA.fasta")
+fasta_files_2 <- lapply(trimmed_fasta_filenames, readDNAStringSet)
 # Define substrings to search for
 species <- c("SCF049","SCF055", "madreporum", "sodalum", "patulum", "proliferum", "vulgare")
 
@@ -335,22 +389,123 @@ writeXStringSet(clean, "tree.fasta")
 
 #raxml-ng -msa tree.fasta -prefix output_tree -model GTR -seed 12345 -all -threads 4 
 
-tree <- read.tree(text = "(sodalum:0.001542,vulgare:0.000385,(madreporum:0.001156,(patulum:0.000771,((SCF055:0.000001,SCF049:0.000001):0.000772,proliferum:0.000001):0.001029):0.000514):0.000001);
-")
+tree <- read.tree(text = "(((sodalum:0.001666,(madreporum:0.001250,patulum:0.000666):0.000415):0.000332,vulgare:0.000333):0.001333,proliferum:0.000001,(SCF055:0.000999,SCF049:0.000333):0.002671);")
 
 pdf("first_tree.pdf")
 plot(tree)
+#add.scale.bar(length = avg_substitutions_per_site, lwd = 2, col = "black", cex = 0.8, horiz = FALSE)
 dev.off()
 
 
 
+tree_sequence <- read.dna("tree.fasta", format = "fasta")
+distance_matrix <- dist.dna(tree_sequence, model = "raw", as.matrix = TRUE) #calculate distance matrix
+pairwise_differences <- dist.dna(tree_sequence, model = "raw")
+
+
+nj_tree <- nj(pairwise_differences)
+plot(nj_tree)
+add.scale.bar(length = mean(pairwise_differences), lwd = 2, col = "black", cex = 0.8)
+
+
+# ggtree_obj <- ggtree(nj_tree) +
+#   geom_tiplab() +
+#   theme_tree2() +
+#   labs(title = "Neighbor-Joining Tree Based on Pairwise Differences")
+# ggtree_obj +
+#   geom_tree(scale = 100, offset = -0.1) +
+#   geom_text(data = data.frame(x = 0.5 * mean(pairwise_differences), y = max(ggtree_obj$data$y)), 
+#             aes(x = x, y = y, label = round(mean(pairwise_differences), 2)),
+#             vjust = -0.5) +
+#   theme(panel.grid.minor = element_blank())
+
+
+#pairwise base substitution
+num_sequences <- nrow(tree_sequence)
+sequence_length <- ncol(tree_sequence)
+
+
+num_diff_matrix <- matrix(0, nrow = num_sequences, ncol = num_sequences)
+substitution_positions <- rep(FALSE, sequence_length)
+labels <- rownames(tree_sequence)
+
+for (i in 1:(num_sequences - 1)) {
+  for (j in (i+1):num_sequences) {
+    differences <- tree_sequence[i, ] != tree_sequence[j, ]
+    num_diff <- sum(differences)
+    num_diff_matrix[i, j] <- num_diff
+    num_diff_matrix[j, i] <- num_diff  # Matrix is symmetric
+    substitution_positions <- substitution_positions | differences
+  }
+}
+
+rownames(num_diff_matrix) <- labels
+colnames(num_diff_matrix) <- labels
+
+nj_tree2 <- nj(num_diff_matrix)
+plot(nj_tree2)
 
 
 
 
+##########################
+#plotting substitutions
+
+substitution_indices <- which(substitution_positions)
+
+# Create a matrix to store the bases at substitution positions
+base_matrix <- tree_sequence[, substitution_indices]
+colnames(base_matrix) <- substitution_indices
+rownames(base_matrix) <- rownames(tree_sequence)
+
+spe <- c("madreporum", "patulum", "proliferum", "SCF049", "SCF055", "sodalum", "vulgare")
+
+# Convert the matrix to a data frame for easier plotting with ggplot2
+base_df <- as.data.frame(t(base_matrix)) %>% 
+  head(., 42)
+rownames(base_df) <- substitution_indices
+base_df$Position <- as.numeric(substitution_indices)
 
 
+#export base_df in excel, manipulate it and reimport it
+base_sub <- read_excel("seq_substitutions_position.xlsx")
 
+base_sub_long <- base_sub %>%
+  pivot_longer(cols = -Position, names_to = "Species", values_to = "Base")
+
+base_sub_long <- base_sub_long %>%
+  mutate(Marker = case_when(
+    Position >= 0 & Position <= 946 ~ "Cox1",
+    Position >= 947 & Position <= 1549 ~ "LSU",
+    Position >= 1550 & Position <= 2097 ~ "cp23s",
+    Position >= 2098 & Position <= 3010 ~ "Cob",
+    Position >= 3011 & Position <= 3092 ~ "psbA",
+    TRUE ~ "Unknown"  # In case any position falls outside the given ranges
+  ))
+base_sub_long$Base <- toupper(base_sub_long$Base)
+
+marker_ranges <- base_sub_long %>%
+  group_by(Marker) %>%
+  summarize(start = min(Position), end = max(Position)) %>%
+  ungroup()
+
+p3 <- ggplot(base_sub_long, aes(x = Position, y = Species)) +
+  geom_tile(aes(fill = Base), size = 4) +
+  #geom_point(aes(color = base_sub_long$Base), size = 2) +
+  scale_fill_manual(values = palette, name = "Base")+
+  theme_minimal() +
+  labs(title = "",
+       x = "Position",
+       y = "Species",
+       color = "Base") +
+  geom_segment(data = marker_ranges, aes(x = start, xend = end, y = Inf, yend = Inf), 
+             color = "black", size = 1, inherit.aes = FALSE) +
+  geom_text(data = marker_ranges, aes(x = (start + end) / 2, y = Inf, label = Marker), 
+            vjust = -0.5, inherit.aes = FALSE) +
+  coord_cartesian(clip = 'off') +  # Allows labels to be displayed outside the plot area
+  theme(plot.margin = unit(c(1, 1, 1, 1), "cm"))  # Add margin to avoid clipping
+
+ggsave("substitution_position.pdf", plot = p3, device="pdf", width = 10, height = 4)
 
 ##########################
 
